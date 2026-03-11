@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { getSession } from "next-auth/react";
+import { getServerSession } from "next-auth";
 import Navbar from "../src/components/Navbar";
 import { useRouter } from "next/router";
+import { authOptions } from "./api/auth/[...nextauth]";
 
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
@@ -224,7 +225,7 @@ export default function Upload() {
 }
 
 export async function getServerSideProps(context: any) {
-  const session = await getSession(context);
+  const session = await getServerSession(context.req, context.res, authOptions);
   if (!session) {
     return { redirect: { destination: "/auth/signin", permanent: false } };
   }
