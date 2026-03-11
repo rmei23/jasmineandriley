@@ -23,7 +23,7 @@ export default function SignIn({ csrfToken }: { csrfToken?: string | null }) {
     if (res?.error) {
       setError("Invalid email or password");
     } else {
-      router.push("/gallery");
+      window.location.href = "/gallery";
     }
   };
 
