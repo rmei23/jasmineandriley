@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { getSession } from "next-auth/react";
+import { getServerSession } from "next-auth";
 import Navbar from "../src/components/Navbar";
+import { authOptions } from "./api/auth/[...nextauth]";
 
 interface Image {
   id: string;
@@ -229,7 +230,7 @@ export default function Gallery() {
 }
 
 export async function getServerSideProps(context: any) {
-  const session = await getSession(context);
+  const session = await getServerSession(context.req, context.res, authOptions);
   if (!session) {
     return { redirect: { destination: "/auth/signin", permanent: false } };
   }
