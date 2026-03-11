@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { prisma } from "../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import formidable from "formidable";
 import path from "path";
 import type { NextApiRequest, NextApiResponse } from "next";
