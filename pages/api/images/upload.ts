@@ -1,8 +1,9 @@
-import { getSession } from "next-auth/react";
+import { getServerSession } from "next-auth";
 import { prisma } from "../../lib/prisma";
 import formidable from "formidable";
 import path from "path";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { authOptions } from "../auth/[...nextauth]";
 
 export const config = { api: { bodyParser: false } };
 
@@ -14,7 +15,7 @@ type SessionUserWithId = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getSession({ req });
+  const session = await getServerSession(req, res, authOptions);
   if (!session || !session.user) {
     return res.status(401).json({ message: "Not authenticated" });
   }
