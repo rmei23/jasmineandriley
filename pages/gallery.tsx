@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { getSession } from "next-auth/react";
 import Navbar from "../src/components/Navbar";
 
@@ -8,8 +8,13 @@ interface Image {
   caption: string | null;
 }
 
-function ImageCard({ img }: { img: Image }) {
+function ImageCard({ img, index }: { img: Image; index: number }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Create varied spacing for disjointed look
+  const spacingVariants = ['0.8rem', '1.2rem', '1.6rem', '2rem', '1rem'];
+  const marginBottom = spacingVariants[index % spacingVariants.length];
 
   return (
     <div
@@ -18,46 +23,87 @@ function ImageCard({ img }: { img: Image }) {
         overflow: 'hidden',
         borderRadius: '16px',
         background: 'white',
-        boxShadow: isHovered ? '0 20px 40px rgba(0, 0, 0, 0.15)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
-        transition: 'all 0.3s ease'
+        boxShadow: isHovered ? '0 16px 32px rgba(0, 0, 0, 0.12)' : '0 4px 12px rgba(0, 0, 0, 0.08)',
+        transform: isHovered ? 'translateY(-8px)' : 'translateY(0)',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        opacity: isLoaded ? 1 : 0,
+        breakInside: 'avoid',
+        marginBottom: marginBottom,
+        cursor: 'pointer'
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div style={{ 
-        width: '100%', 
-        paddingBottom: '100%', 
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <img
-          src={img.filePath}
-          alt="Gallery image"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            transform: isHovered ? 'scale(1.1)' : 'scale(1)',
-            transition: 'transform 0.5s ease'
-          }}
-        />
-      </div>
+      <img
+        src={img.filePath}
+        alt="Gallery image"
+        onLoad={() => setIsLoaded(true)}
+        style={{
+          width: '100%',
+          height: 'auto',
+          display: 'block',
+          transform: isHovered ? 'scale(1.02)' : 'scale(1)',
+          transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      />
     </div>
   );
 }
 
 export default function Gallery() {
   const [images, setImages] = useState<Image[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  const loadImages = useCallback(async () => {
+    if (loading || !hasMore) return;
+    
+    setLoading(true);
+    try {
+      const url = cursor 
+        ? `/api/images/paginated?cursor=${cursor}&limit=20`
+        : `/api/images/paginated?limit=20`;
+      
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      setImages(prev => [...prev, ...data.images]);
+      setCursor(data.nextCursor);
+      setHasMore(!!data.nextCursor);
+    } catch (error) {
+      console.error("Error loading images:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [cursor, loading, hasMore]);
 
   useEffect(() => {
-    fetch("/api/images/random")
-      .then(res => res.json())
-      .then(setImages);
+    loadImages();
   }, []);
+
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          loadImages();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [hasMore, loading, loadImages]);
 
   return (
     <div style={{
@@ -66,9 +112,9 @@ export default function Gallery() {
     }}>
       <Navbar />
       <div style={{
-        maxWidth: '1280px',
+        width: '90%',
         margin: '0 auto',
-        padding: '3rem 1.5rem'
+        padding: '2rem 0'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
           <h1 style={{
@@ -84,7 +130,7 @@ export default function Gallery() {
           <p style={{ color: '#6b7280', fontSize: '1.125rem' }}>A collection of our favorite moments together :)</p>
         </div>
 
-        {images.length === 0 ? (
+        {images.length === 0 && !loading ? (
           <div style={{ textAlign: 'center', padding: '5rem 0' }}>
             <div style={{
               width: '96px',
@@ -104,17 +150,80 @@ export default function Gallery() {
             <p style={{ color: '#6b7280' }}>Upload your first photo to get started!</p>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '1.5rem'
-          }}>
-            {images.map((img) => (
-              <ImageCard key={img.id} img={img} />
-            ))}
-          </div>
+          <>
+            <div style={{
+              columnCount: 4,
+              columnGap: '2rem'
+            }}>
+              {images.map((img, index) => (
+                <ImageCard key={img.id} img={img} index={index} />
+              ))}
+            </div>
+            
+            {loading && (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '3rem 0',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#9333ea',
+                  animation: 'bounce 1.4s infinite ease-in-out both',
+                  animationDelay: '-0.32s'
+                }}></div>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#9333ea',
+                  animation: 'bounce 1.4s infinite ease-in-out both',
+                  animationDelay: '-0.16s'
+                }}></div>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#9333ea',
+                  animation: 'bounce 1.4s infinite ease-in-out both'
+                }}></div>
+              </div>
+            )}
+            
+            <div ref={loadMoreRef} style={{ height: '20px' }} />
+          </>
         )}
       </div>
+      
+      <style jsx>{`
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0); }
+          40% { transform: scale(1); }
+        }
+        
+        @media (max-width: 1200px) {
+          div[style*="columnCount"] {
+            column-count: 3 !important;
+          }
+        }
+        
+        @media (max-width: 768px) {
+          div[style*="columnCount"] {
+            column-count: 2 !important;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          div[style*="columnCount"] {
+            column-count: 1 !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
