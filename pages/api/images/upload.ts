@@ -41,16 +41,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     else if (uploadedFile) file = uploadedFile as formidable.File;
     else return res.status(400).json({ message: "No file uploaded" });
 
-    const captionField = fields.caption;
-    let caption: string | null = null;
-    if (Array.isArray(captionField)) caption = captionField[0];
-    else if (typeof captionField === "string") caption = captionField;
-
     try {
       const image = await prisma.image.create({
         data: {
           filePath: `/uploads/${path.basename(file.filepath)}`,
-          caption: caption,
+          caption: null,
           userId: user.id,
         },
       });
