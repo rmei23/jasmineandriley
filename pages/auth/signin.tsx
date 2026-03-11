@@ -4,7 +4,7 @@ import { GetServerSideProps } from "next";
 import { useState } from "react";
 import { useRouter } from "next/router";
 
-export default function SignIn({ csrfToken }: { csrfToken: string }) {
+export default function SignIn({ csrfToken }: { csrfToken?: string | null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +23,6 @@ export default function SignIn({ csrfToken }: { csrfToken: string }) {
     if (res?.error) {
       setError("Invalid email or password");
     } else {
-      // Sign-in successful, redirect to gallery page (or wherever)
       router.push("/gallery");
     }
   };
@@ -32,7 +31,7 @@ export default function SignIn({ csrfToken }: { csrfToken: string }) {
     <div className="flex flex-col items-center justify-center min-h-screen">
       <h1 className="text-3xl font-bold mb-4">Sign In</h1>
       <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-        <input name="csrfToken" type="hidden" defaultValue={csrfToken} />
+        {csrfToken && <input name="csrfToken" type="hidden" defaultValue={csrfToken} />}
         <input
           name="email"
           type="email"
@@ -62,5 +61,5 @@ export default function SignIn({ csrfToken }: { csrfToken: string }) {
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const csrfToken = await getCsrfToken(context);
-  return { props: { csrfToken } };
+  return { props: { csrfToken: csrfToken || null } };
 };

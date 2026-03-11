@@ -1,12 +1,10 @@
 import { getSession } from "next-auth/react";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../lib/prisma";
 import formidable from "formidable";
 import path from "path";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 export const config = { api: { bodyParser: false } };
-
-const prisma = new PrismaClient();
 
 type SessionUserWithId = {
   id: string;
