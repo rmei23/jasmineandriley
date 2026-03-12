@@ -9,31 +9,69 @@ interface Image {
   caption: string | null;
 }
 
-function ImageCard({ img, index }: { img: Image; index: number }) {
+function ImageCard({ img, index, onDelete }: { img: Image; index: number; onDelete: (id: string) => void }) {
   const [isHovered, setIsHovered] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteButton, setShowDeleteButton] = useState(false);
   
   // Create varied spacing for disjointed look
   const spacingVariants = ['0.8rem', '1.2rem', '1.6rem', '2rem', '1rem'];
   const marginBottom = spacingVariants[index % spacingVariants.length];
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    setShowDeleteButton(false);
+    try {
+      const res = await fetch(`/api/images/delete?id=${img.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (res.ok) {
+        onDelete(img.id);
+      } else {
+        alert('Failed to delete image');
+        setDeleting(false);
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      alert('Failed to delete image');
+      setDeleting(false);
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowDeleteButton(true);
+  };
+
+  const handleDoubleClick = () => {
+    setShowDeleteButton(true);
+  };
+
   return (
     <div
       style={{
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'visible',
         borderRadius: '16px',
         background: 'white',
         boxShadow: isHovered ? '0 16px 32px rgba(0, 0, 0, 0.12)' : '0 4px 12px rgba(0, 0, 0, 0.08)',
         transform: isHovered ? 'translateY(-8px)' : 'translateY(0)',
         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-        opacity: isLoaded ? 1 : 0,
+        opacity: deleting ? 0.5 : (isLoaded ? 1 : 0),
         breakInside: 'avoid',
         marginBottom: marginBottom,
-        cursor: 'pointer'
+        cursor: 'pointer',
+        pointerEvents: deleting ? 'none' : 'auto'
       }}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setShowDeleteButton(false);
+      }}
+      onContextMenu={handleContextMenu}
+      onDoubleClick={handleDoubleClick}
     >
       <img
         src={img.filePath}
@@ -47,6 +85,42 @@ function ImageCard({ img, index }: { img: Image; index: number }) {
           transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       />
+      
+      {showDeleteButton && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 1000,
+            background: '#f8b4c4',
+            color: '#7d3344',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '12px',
+            boxShadow: '0 4px 16px rgba(248, 180, 196, 0.4)',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            animation: 'fadeIn 0.2s ease-out',
+            border: '2px solid rgba(125, 51, 68, 0.2)'
+          }}
+          onClick={handleDelete}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f5a3b5';
+            e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.05)';
+            e.currentTarget.style.boxShadow = '0 6px 20px rgba(248, 180, 196, 0.5)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#f8b4c4';
+            e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(248, 180, 196, 0.4)';
+          }}
+        >
+          remove
+        </div>
+      )}
     </div>
   );
 }
@@ -58,6 +132,10 @@ export default function Gallery() {
   const [cursor, setCursor] = useState<string | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteImage = (id: string) => {
+    setImages(prev => prev.filter(img => img.id !== id));
+  };
 
   const loadImages = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -148,7 +226,7 @@ export default function Gallery() {
               </svg>
             </div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>No photos yet</h3>
-            <p style={{ color: '#6b7280' }}>Upload your first photo to get started!</p>
+            <p style={{ color: '#6b7280' }}>Upload some memories!</p>
           </div>
         ) : (
           <>
@@ -157,7 +235,7 @@ export default function Gallery() {
               columnGap: '2rem'
             }}>
               {images.map((img, index) => (
-                <ImageCard key={img.id} img={img} index={index} />
+                <ImageCard key={img.id} img={img} index={index} onDelete={handleDeleteImage} />
               ))}
             </div>
             
@@ -205,6 +283,17 @@ export default function Gallery() {
         @keyframes bounce {
           0%, 80%, 100% { transform: scale(0); }
           40% { transform: scale(1); }
+        }
+        
+        @keyframes fadeIn {
+          from { 
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8);
+          }
+          to { 
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
         }
         
         @media (max-width: 1200px) {
