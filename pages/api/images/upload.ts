@@ -2,8 +2,10 @@ import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import formidable from "formidable";
 import path from "path";
+import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authOptions } from "../auth/[...nextauth]";
+import convert from "heic-convert";
 
 export const config = { api: { bodyParser: false } };
 
@@ -42,9 +44,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     else return res.status(400).json({ message: "No file uploaded" });
 
     try {
+      let finalFilePath = file.filepath;
+      const fileExt = path.extname(file.originalFilename || '').toLowerCase();
+      
+      // Convert HEIC to JPEG
+      if (fileExt === '.heic' || fileExt === '.heif') {
+        const inputBuffer = await fs.promises.readFile(file.filepath);
+        const outputBuffer = await convert({
+          buffer: inputBuffer,
+          format: 'JPEG',
+          quality: 0.9
+        });
+        
+        // Replace .heic extension with .jpg
+        const jpegPath = file.filepath.replace(/\.(heic|heif)$/i, '.jpg');
+        await fs.promises.writeFile(jpegPath, outputBuffer);
+        
+        // Delete original HEIC file
+        await fs.promises.unlink(file.filepath);
+        
+        finalFilePath = jpegPath;
+      }
+
       const image = await prisma.image.create({
         data: {
-          filePath: `/uploads/${path.basename(file.filepath)}`,
+          filePath: `/uploads/${path.basename(finalFilePath)}`,
           caption: null,
           userId: user.id,
         },
