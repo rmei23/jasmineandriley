@@ -5,48 +5,75 @@ import { useRouter } from "next/router";
 import { authOptions } from "./api/auth/[...nextauth]";
 
 export default function Upload() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const router = useRouter();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0] || null;
-    setFile(selectedFile);
+    const selectedFiles = Array.from(e.target.files || []);
+    setFiles(selectedFiles);
     
-    if (selectedFile) {
-      const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
+    const newPreviews: string[] = [];
+    selectedFiles.forEach((file) => {
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
       
       // HEIC files can't be previewed in browser, show placeholder
       if (fileExt === 'heic' || fileExt === 'heif') {
-        setPreview('heic-placeholder');
+        newPreviews.push('heic-placeholder');
       } else {
         const reader = new FileReader();
         reader.onloadend = () => {
-          setPreview(reader.result as string);
+          newPreviews.push(reader.result as string);
+          if (newPreviews.length === selectedFiles.length) {
+            setPreviews([...newPreviews]);
+          }
         };
-        reader.readAsDataURL(selectedFile);
+        reader.readAsDataURL(file);
       }
-    } else {
-      setPreview(null);
+    });
+    
+    // Set previews immediately for HEIC files
+    if (selectedFiles.every(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase();
+      return ext === 'heic' || ext === 'heif';
+    })) {
+      setPreviews(newPreviews);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (files.length === 0) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
+    setUploadProgress({ current: 0, total: files.length });
+    
+    let successCount = 0;
+    
+    for (let i = 0; i < files.length; i++) {
+      const formData = new FormData();
+      formData.append("file", files[i]);
 
-    const res = await fetch("/api/images/upload", {
-      method: "POST",
-      body: formData,
-    });
+      try {
+        const res = await fetch("/api/images/upload", {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (res.ok) {
+          successCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to upload ${files[i].name}:`, error);
+      }
+      
+      setUploadProgress({ current: i + 1, total: files.length });
+    }
 
     setUploading(false);
-    if (res.ok) {
+    if (successCount > 0) {
       router.push("/gallery");
     } else {
       alert("Upload failed");
@@ -96,10 +123,10 @@ export default function Upload() {
               color: '#374151',
               marginBottom: '0.75rem'
             }}>
-              Choose Photo
+              Choose Photos
             </label>
             
-            {!preview ? (
+            {files.length === 0 ? (
               <label style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -127,78 +154,82 @@ export default function Upload() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
                   <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>Click to upload</p>
-                  <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>PNG, JPG, GIF, HEIC up to 10MB</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>PNG, JPG, GIF, HEIC</p>
                 </div>
                 <input
                   type="file"
                   accept="image/*,.heic,.heif"
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
+                  multiple
                   required
                 />
               </label>
             ) : (
-              <div style={{ position: 'relative' }}>
-                {preview === 'heic-placeholder' ? (
-                  <div style={{
-                    width: '100%',
-                    height: '256px',
-                    borderRadius: '16px',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                    background: 'linear-gradient(to bottom right, #e9d5ff, #dbeafe)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '1rem'
-                  }}>
-                    <svg style={{ width: '64px', height: '64px', color: '#9333ea' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontWeight: '600', color: '#374151', marginBottom: '0.25rem' }}>{file?.name}</p>
-                      <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>HEIC image selected</p>
-                      <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>Preview not available - will convert to JPEG on upload</p>
+              <div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  {files.map((file, index) => (
+                    <div key={index} style={{ position: 'relative' }}>
+                      {previews[index] === 'heic-placeholder' ? (
+                        <div style={{
+                          width: '100%',
+                          height: '150px',
+                          borderRadius: '12px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                          background: 'linear-gradient(to bottom right, #e9d5ff, #dbeafe)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '0.5rem'
+                        }}>
+                          <svg style={{ width: '32px', height: '32px', color: '#9333ea', marginBottom: '0.5rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <p style={{ fontSize: '0.7rem', color: '#6b7280', textAlign: 'center', wordBreak: 'break-word' }}>{file.name}</p>
+                        </div>
+                      ) : (
+                        <img
+                          src={previews[index] || ''}
+                          alt={`Preview ${index + 1}`}
+                          style={{
+                            width: '100%',
+                            height: '150px',
+                            objectFit: 'cover',
+                            borderRadius: '12px',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+                          }}
+                        />
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <img
-                    src={preview || ''}
-                    alt="Preview"
-                    style={{
-                      width: '100%',
-                      height: '256px',
-                      objectFit: 'cover',
-                      borderRadius: '16px',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                    }}
-                  />
-                )}
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setFile(null);
-                    setPreview(null);
+                    setFiles([]);
+                    setPreviews([]);
                   }}
                   style={{
-                    position: 'absolute',
-                    top: '12px',
-                    right: '12px',
-                    background: '#ef4444',
-                    color: 'white',
-                    borderRadius: '50%',
-                    padding: '8px',
-                    border: 'none',
+                    background: '#f8b4c4',
+                    color: '#7d3344',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    border: '2px solid rgba(125, 51, 68, 0.2)',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-                    transition: 'background 0.2s'
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    transition: 'all 0.2s'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.background = '#dc2626'}
-                  onMouseOut={(e) => e.currentTarget.style.background = '#ef4444'}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#f5a3b5'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#f8b4c4'}
                 >
-                  <svg style={{ width: '20px', height: '20px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  Clear All ({files.length})
                 </button>
               </div>
             )}
@@ -206,22 +237,22 @@ export default function Upload() {
 
           <button
             type="submit"
-            disabled={uploading || !file}
+            disabled={uploading || files.length === 0}
             style={{
               width: '100%',
-              background: (uploading || !file) ? 'linear-gradient(to right, #d1d5db, #9ca3af)' : 'linear-gradient(to right, #a855f7, #3b82f6)',
+              background: (uploading || files.length === 0) ? 'linear-gradient(to right, #d1d5db, #9ca3af)' : 'linear-gradient(to right, #a855f7, #3b82f6)',
               color: 'white',
               fontWeight: '600',
               padding: '1rem',
               borderRadius: '12px',
               border: 'none',
-              cursor: (uploading || !file) ? 'not-allowed' : 'pointer',
+              cursor: (uploading || files.length === 0) ? 'not-allowed' : 'pointer',
               fontSize: '1rem',
               boxShadow: '0 4px 14px rgba(168, 85, 247, 0.4)',
               transition: 'all 0.2s'
             }}
             onMouseOver={(e) => {
-              if (!uploading && file) {
+              if (!uploading && files.length > 0) {
                 e.currentTarget.style.transform = 'translateY(-2px)';
                 e.currentTarget.style.boxShadow = '0 6px 20px rgba(168, 85, 247, 0.5)';
               }
@@ -237,7 +268,7 @@ export default function Upload() {
                   <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Uploading...
+                Uploading {uploadProgress.current}/{uploadProgress.total}...
               </span>
             ) : (
               "Upload to Gallery"
